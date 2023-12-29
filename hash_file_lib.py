@@ -27,6 +27,7 @@ shGetPathFromIDList.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
 shGetPathFromIDList.restype = wintypes.BOOL
 
 last_folder = None
+src_hashes = []
 
 def calculate_hash(file_path):
 	"""Вычисляет хэш файла."""
@@ -46,10 +47,15 @@ def get_files_in_folder(folder_path):
 	return files
 
 def compare_and_copy_files(src_folder, dest_folder):
+	global src_hashes
 	"""Сравнивает хэши файлов из двух папок и копирует те, которых нет в dest_folder."""
 	src_files = get_files_in_folder(src_folder)
 	dest_files = get_files_in_folder(dest_folder)
-	src_hashes = [calculate_hash(file_path) for file_path in src_files]
+	if ctypes.windll.user32.MessageBoxW(0, f"Файлов в кэше {len(src_hashes)}\nХотите обновить хэш?", "Обновить хэш", 1) == 1:
+		src_hashes = []
+		for i in tqdm(src_files, desc="Хэширование файлов", unit="файл"):
+			src_hashes.append(calculate_hash(i))
+
 	unique_prefix = str(uuid.uuid4())
 
 	for i, file_path in enumerate(tqdm(dest_files, desc="Сравнение и копирование файлов", unit="файл")):
@@ -58,6 +64,7 @@ def compare_and_copy_files(src_folder, dest_folder):
 			new_filename = f"{unique_prefix}_{i}.{file_path.split('.')[-1]}"
 			src_folder_path = os.path.join(src_folder, new_filename)
 			shutil.copy(file_path, src_folder_path)
+			src_hashes.append(file_hash)
 
 def path_to_pidl(path):
 	pidl = ctypes.POINTER(ctypes.c_void_p)()
@@ -69,7 +76,7 @@ def select_folder(lpszTitle):
 	 # Инициализация BROWSEINFO
 	bi = BROWSEINFO()
 	bi.hwndOwner = 0
-	bi.pidlRoot = ctypes.POINTER(ctypes.c_void_p)() if last_folder is None else path_to_pidl('\\'.join(last_folder.split('\\')[:-1]))
+	bi.pidlRoot = ctypes.POINTER(ctypes.c_void_p)()# if last_folder is None else path_to_pidl('\\'.join(last_folder.split('\\')[0]))
 	bi.pszDisplayName = ctypes.cast(ctypes.create_string_buffer(260), ctypes.c_char_p)
 	bi.lpszTitle = lpszTitle.encode('cp1251')
 	bi.ulFlags = 0x00000001  # BIF_RETURNONLYFSDIRS
@@ -84,7 +91,7 @@ def select_folder(lpszTitle):
 	path = ctypes.create_string_buffer(260)
 	shGetPathFromIDList(pidl, path)
 
-	last_folder = path.value.decode('utf-8')
+	last_folder = path.value.decode('cp1251')
 
 	return last_folder
 
